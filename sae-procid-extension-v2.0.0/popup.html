@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>SAE Procid Capturador</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: 360px;
+      padding: 14px;
+      margin: 0;
+      background: #fafafa;
+      color: #222;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 0 0 12px 0;
+      font-weight: 600;
+    }
+    .field { margin-bottom: 10px; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: monospace;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+    input[type="text"]:focus, input[type="url"]:focus {
+      outline: none;
+      border-color: #1976d2;
+    }
+    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    button {
+      padding: 6px 14px;
+      font-size: 12px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button.primary { background: #1976d2; color: white; }
+    button.primary:hover { background: #1565c0; }
+    button.secondary { background: #eee; color: #333; }
+    button.secondary:hover { background: #ddd; }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 8px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 3px;
+      font-size: 11px;
+      font-family: monospace;
+      max-height: 140px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .status.empty { color: #999; font-style: italic; font-family: inherit; }
+    .ok { color: #2e7d32; }
+    .err { color: #c62828; }
+    .saved {
+      font-size: 11px;
+      color: #2e7d32;
+      margin-left: 8px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .saved.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>🔌 SAE Procid Capturador</h1>
+
+  <div class="field">
+    <label>Web App URL</label>
+    <input type="url" id="webAppUrl" placeholder="https://script.google.com/macros/s/.../exec">
+  </div>
+
+  <div class="field">
+    <label>Token de seguridad</label>
+    <input type="text" id="token" placeholder="token hardcodeado en script">
+  </div>
+
+  <div class="row">
+    <button class="primary" id="save">💾 Guardar config</button>
+    <span class="saved" id="saved">✓ guardado</span>
+  </div>
+
+  <div class="row">
+    <label class="toggle">
+      <input type="checkbox" id="enabled" checked>
+      Capturar captcha automáticamente
+    </label>
+  </div>
+
+  <div class="field">
+    <label>Último resultado</label>
+    <div class="status empty" id="status">— sin actividad —</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

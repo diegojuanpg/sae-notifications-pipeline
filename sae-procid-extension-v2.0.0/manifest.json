@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "SAE Procid Capturador + PDF Viewer",
+  "version": "2.0.0",
+  "description": "Captura captcha del buscador de Consulta Expedientes Tucumán y dispara extracción automática de procIDs en Google Sheet vía Web App. Además permite visualizar adjuntos PDF inline en nueva pestaña en vez de descargarlos.",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "notifications",
+    "cookies",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://conexpbe.justucuman.gov.ar/*",
+    "*://consultaexpedientes.justucuman.gov.ar/*",
+    "*://script.google.com/*",
+    "*://script.googleusercontent.com/*",
+    "*://*.google.com/*",
+    "*://*.gstatic.com/*",
+    "*://*.recaptcha.net/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://consultaexpedientes.justucuman.gov.ar/*"],
+      "js": ["content_iso.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://consultaexpedientes.justucuman.gov.ar/*"],
+      "js": ["content_main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SAE Procid Capturador + PDF Viewer"
+  },
+  "icons": {
+    "128": "icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icon128.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
