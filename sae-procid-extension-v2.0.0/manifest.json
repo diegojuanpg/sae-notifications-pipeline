@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SAE Procid Capturador + PDF Viewer",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Captura captcha del buscador de Consulta Expedientes Tucumán y dispara extracción automática de procIDs en Google Sheet vía Web App. Además permite visualizar adjuntos PDF inline en nueva pestaña en vez de descargarlos.",
   "permissions": [
     "webRequest",
