@@ -715,6 +715,67 @@ function expteBase(expte) {
   return m ? m[1].replace(/\s+/g, '') : '';
 }
 
+// Test del fix de incidentes. Corre desde el editor de Apps Script y mirá el registro.
+// No escribe nada en la planilla.
+function testIncidentesQ1() {
+  Logger.log('━━━ TEST 1: lógica de expteBase (sin tocar la planilla) ━━━');
+  const casos = [
+    ['3831/26-Q1', '3831/26'],
+    ['3832/26-Q1', '3832/26'],
+    ['4596/26-Q2', '4596/26'],
+    ['2287/26', '2287/26'],
+    [' 3831/26-Q1 ', '3831/26'],
+    ['', ''],
+    ['basura', ''],
+  ];
+  let fallas = 0;
+  for (const [entrada, esperado] of casos) {
+    const obtenido = expteBase(entrada);
+    const ok = obtenido === esperado;
+    if (!ok) fallas++;
+    Logger.log((ok ? '  ✅' : '  ❌') + ' "' + entrada + '" → "' + obtenido + '" (esperado "' + esperado + '")');
+  }
+  Logger.log(fallas === 0 ? '  TEST 1 OK' : '  TEST 1: ' + fallas + ' FALLAS');
+
+  Logger.log('');
+  Logger.log('━━━ TEST 2: resolución contra el mapa REAL de Responsables ━━━');
+  const mapa = cargarResponsables();
+  const total = Object.keys(mapa).length;
+  Logger.log('  Expedientes en el mapa: ' + total);
+  if (total === 0) {
+    Logger.log('  ❌ Mapa vacío — revisá la hoja Responsables (¿IMPORTRANGE pidiendo permiso?)');
+    return;
+  }
+
+  Logger.log('');
+  Logger.log('━━━ TEST 3: filas de la planilla sin responsable ━━━');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName(CONFIG.HOJA_NOMBRE);
+  if (!hoja) { Logger.log('  ❌ Hoja no encontrada'); return; }
+  const lastRow = hoja.getLastRow();
+  if (lastRow < 6) { Logger.log('  ℹ️ Sin datos'); return; }
+
+  const datos = hoja.getRange(6, 2, lastRow - 5, 3).getValues(); // B, C, D
+  let huerfanas = 0;
+  let reparables = 0;
+  for (let i = 0; i < datos.length; i++) {
+    const resp = datos[i][0] ? datos[i][0].toString().trim() : '';
+    const expte = datos[i][2] ? datos[i][2].toString().trim() : '';
+    if (resp || !expte) continue;
+    huerfanas++;
+    const resuelto = buscarResponsable(expte, mapa);
+    if (resuelto) {
+      reparables++;
+      Logger.log('  ✅ fila ' + (6 + i) + '  ' + expte + ' → ' + resuelto + '  (madre: ' + expteBase(expte) + ')');
+    } else {
+      Logger.log('  ⚠️ fila ' + (6 + i) + '  ' + expte + ' → SIN MATCH (madre: "' + expteBase(expte) + '" no está en Responsables)');
+    }
+  }
+  Logger.log('');
+  Logger.log('  Filas sin responsable: ' + huerfanas + ' — reparables: ' + reparables + ' — sin match: ' + (huerfanas - reparables));
+  Logger.log('  Si "reparables" > 0, corré: menú → 🔧 Reparar responsables faltantes');
+}
+
 // Rellena Resp. en filas ya escritas que quedaron sin responsable
 // (típicamente incidentes "-Q1" cargados antes del fix de buscarResponsable).
 function repararResponsables() {
