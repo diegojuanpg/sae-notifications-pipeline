@@ -696,8 +696,78 @@ function cargarResponsables() {
 }
 
 function buscarResponsable(expte, mapa) {
-  if (!expte || !mapa[expte]) return '';
-  return mapa[expte].join(' / ');
+  if (!expte) return '';
+  const clave = expte.toString().trim();
+  if (mapa[clave]) return mapa[clave].join(' / ');
+
+  // Incidentes: "3831/26-Q1" es un expediente anexo al principal "3831/26".
+  // No figura en Responsables (que sólo lista principales), pero hereda su responsable.
+  const base = expteBase(clave);
+  if (base && base !== clave && mapa[base]) return mapa[base].join(' / ');
+
+  return '';
+}
+
+// "3831/26-Q1" -> "3831/26" | "3831/26" -> "3831/26" | basura -> ''
+function expteBase(expte) {
+  if (!expte) return '';
+  const m = expte.toString().trim().match(/^\s*(\d+\s*\/\s*\d+)/);
+  return m ? m[1].replace(/\s+/g, '') : '';
+}
+
+// Rellena Resp. en filas ya escritas que quedaron sin responsable
+// (típicamente incidentes "-Q1" cargados antes del fix de buscarResponsable).
+function repararResponsables() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName(CONFIG.HOJA_NOMBRE);
+  if (!hoja) {
+    SpreadsheetApp.getUi().alert('⚠️ Hoja ' + CONFIG.HOJA_NOMBRE + ' no encontrada.');
+    return;
+  }
+  const lastRow = hoja.getLastRow();
+  if (lastRow < 6) {
+    SpreadsheetApp.getUi().alert('ℹ️ Sin filas de datos.');
+    return;
+  }
+
+  const mapa = cargarResponsables();
+  const datos = hoja.getRange(6, 2, lastRow - 5, 3).getValues(); // B=Resp, C=Fecha, D=Expte
+  const colResp = [];
+  let reparados = 0;
+  const sinMatch = [];
+
+  for (let i = 0; i < datos.length; i++) {
+    const actual = datos[i][0] ? datos[i][0].toString().trim() : '';
+    const expte = datos[i][2] ? datos[i][2].toString().trim() : '';
+
+    if (actual || !expte) {
+      colResp.push([datos[i][0]]);
+      continue;
+    }
+
+    const resp = buscarResponsable(expte, mapa);
+    if (resp) {
+      colResp.push([resp]);
+      reparados++;
+      Logger.log('🔧 Fila ' + (6 + i) + ' ' + expte + ' → ' + resp);
+    } else {
+      colResp.push([datos[i][0]]);
+      sinMatch.push(expte);
+    }
+  }
+
+  if (reparados > 0) {
+    hoja.getRange(6, 2, colResp.length, 1).setValues(colResp);
+  }
+  Logger.log('✅ repararResponsables: ' + reparados + ' filas reparadas, ' + sinMatch.length + ' sin match');
+
+  SpreadsheetApp.getUi().alert(
+    '🔧 Responsables reparados: ' + reparados + '\n' +
+    'Sin match: ' + sinMatch.length +
+    (sinMatch.length > 0 ? '\n\n' + sinMatch.slice(0, 15).join(', ') : '') +
+    '\n\nSi reparó filas: hacé una búsqueda en Consulta Expedientes para que la extensión\n' +
+    'complete los procID, y después corré "Extraer última entrada y asignar estados faltantes".'
+  );
 }
 
 function parsearTabla(html) {
@@ -1189,6 +1259,7 @@ function onOpen() {
   ui.createMenu('Notificaciones')
     .addItem('📥 Extraer notificaciones manualmente', 'ejecucionManual')
     .addItem('🔍 Extraer última entrada y asignar estados faltantes', 'extraerUltimaEntradaYAsignarEstados')
+    .addItem('🔧 Reparar responsables faltantes (incidentes)', 'repararResponsables')
     .addSeparator()
     .addItem('🔗 Actualizar "Espacio SAT ID"', 'actualizarEspacioSatId')
     .addItem('📤 Transferir estados a "Espacio SAT"', 'transferirEstadosEspacioSat')
