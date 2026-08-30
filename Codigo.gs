@@ -297,6 +297,7 @@ function asignarEstadosFinal(hoja) {
   const datos = hoja.getRange(6, 1, lastRow - 5, 9).getValues();
   const mapaEstados = cargarSettingsEstados();
   let asignados = 0;
+  let respetados = 0;
 
   for (let i = 0; i < datos.length; i++) {
     const filaSheet = 6 + i;
@@ -349,17 +350,20 @@ function asignarEstadosFinal(hoja) {
       Logger.log('   ❌ No se encontró ningún match para asignar estado.');
     }
 
-    // Si encontramos un estado y es diferente al que ya está en la hoja
-    if (estadoAsignado && estadoActual !== estadoAsignado) {
+    // Solo se escribe sobre celda vacía: nunca se pisa una decisión humana
+    // ni una asignación previa. Para reevaluar una fila, borrar la celda.
+    if (estadoAsignado && !estadoActual) {
       hoja.getRange(filaSheet, 5).setValue(estadoAsignado);
       asignados++;
       Logger.log('   ✍️ Escribiendo estado en celda: ' + estadoAsignado);
-    } else if (estadoAsignado && estadoActual === estadoAsignado) {
-      Logger.log('   ⏭️ El estado asignado es igual al actual, se omite escritura.');
+    } else if (estadoAsignado) {
+      respetados++;
+      Logger.log('   🔒 Ya tiene "' + estadoActual + '" — no se pisa' +
+        (estadoActual !== estadoAsignado ? ' (sugerido era: ' + estadoAsignado + ')' : ''));
     }
   }
   Logger.log('----------------------------------------');
-  Logger.log('✅ Asignación final completada: ' + asignados + ' filas actualizadas.');
+  Logger.log('✅ Asignación final completada: ' + asignados + ' filas escritas, ' + respetados + ' respetadas.');
 }
 
 function actualizarTimestamp(hoja, tipoEjecucion, exito) {
