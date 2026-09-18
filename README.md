@@ -486,6 +486,12 @@ con fallback al número madre para que los incidentes hereden el responsable del
 3. Ir a `consultaexpedientes.justucuman.gov.ar`, buscar **un** expediente cualquiera.
 4. A partir de ahí el lote corre solo; una notificación de Chrome informa el resultado.
 
+<img src="docs/popup-extension.png" alt="Popup de la extensión" width="392">
+
+*El popup: configuración y resultado del último lote. Cuando el lote se corta por un
+rechazo del captcha, informa cuántos expedientes quedaron pendientes para la próxima
+búsqueda.*
+
 Detalle e incidencias comunes en [`sae-procid-extension-v2.0.0/README.md`](sae-procid-extension-v2.0.0/README.md).
 
 ---

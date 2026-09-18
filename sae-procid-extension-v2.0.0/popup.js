@@ -45,14 +45,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const r = cfg.lastResult;
     const fecha = new Date(cfg.lastTimeIso).toLocaleString();
     const ok = r.success;
-    let body = '[' + fecha + ']  (' + (cfg.lastTookMs || '?') + ' ms)\n';
+    const duracion = cfg.lastTookMs ? Math.round(cfg.lastTookMs / 1000) + ' s' : '? s';
+    let body = '[' + fecha + ']  (' + duracion + ')\n';
     if (ok) {
-      body += '✅ guardados: ' + (r.saved || r.processed || 0) + '\n';
+      body += '✅ guardados: ' + (r.saved || 0) + '\n';
       if (r.sinMatch !== undefined) body += '🔍 sin match: ' + r.sinMatch + '\n';
-      if (r.skipped) body += '⏭️  saltados: ' + r.skipped + '\n';
       if (r.errores) body += '⚠️ errores: ' + r.errores + '\n';
-      if (r.captchaExpirado) body += '🛑 captcha expiró antes de terminar\n';
-      if (r.stopped) body += '🛑 cortado: ' + (r.stopReason || 'sí') + '\n';
+      // background.js corta el lote ante un rechazo del captcha y reporta cuántos
+      // quedaron sin procesar: sin esto el popup decía "todo ok" y escondía el corte.
+      if (r.detenidoAntes && r.faltantes) {
+        body += '⏸️ faltan ' + r.faltantes + ' — buscá otro expediente para seguir\n';
+      }
+      if (r.captchaExpirado) body += '🛑 el lote se cortó por rechazo del captcha\n';
       if (r.message) body += 'ℹ️ ' + r.message + '\n';
     } else {
       body += '❌ error: ' + (r.error || 'desconocido');
