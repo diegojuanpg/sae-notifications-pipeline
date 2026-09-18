@@ -1,2 +1,5 @@
 # artefactos de build, no van al repo
 *.zip
+
+# nota de voz del cliente: fuera del repo publico
+*.ogg

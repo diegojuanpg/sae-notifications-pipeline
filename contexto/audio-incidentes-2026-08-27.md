@@ -3,8 +3,8 @@
 Nota de voz recibida en el hilo donde se reporta que el gestor marcaba 7 de 10
 notificaciones. Explica qué son los incidentes y por qué el matcheo fallaba.
 
-Archivo: `WhatsApp Ptt 2026-08-27 at 9.52.33 AM.ogg` (44.9s)
-Transcripto con faster-whisper (modelo `small`, es, local).
+Audio original de 44.9s, transcripto con faster-whisper (modelo `small`, es, local).
+El archivo de audio no se publica: es la voz de una persona real.
 
 ---
 

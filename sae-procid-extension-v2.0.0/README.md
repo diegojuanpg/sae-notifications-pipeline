@@ -1,39 +1,46 @@
 # SAE Procid Capturador — Setup
 
-Sistema completo: extension Chrome captura captcha del buscador de SAE → manda a Apps Script Web App → Web App extrae procIDs y los escribe en columna A de Notificaciones automáticamente.
+Extension MV3 que resuelve los `procID` de los expedientes pendientes en la planilla.
+Genera un token de reCAPTCHA fresco por consulta desde la propia pagina del
+buscador, en la sesion del usuario. Explicacion completa del mecanismo en el
+[README raiz](../README.md#cómo-se-resuelve-el-recaptcha).
 
 ---
 
 ## Arquitectura
 
 ```
-[Browser]                          [Apps Script]
 consultaexpedientes.justucuman.gov.ar
    │
-   │ 1. user busca expte → resuelve captcha
+   │ el usuario busca UN expediente y el sitio llama a grecaptcha.execute()
+   ▼
+[content_main.js — world MAIN]
+   hookea grecaptcha.execute y guarda los args exactos (siteKey + action)
+   │  ▲
+   │  │ CustomEvent + requestId
+   ▼  │
+[content_iso.js — world ISOLATED]
+   puente: traduce CustomEvent ↔ chrome.runtime
+   │  ▲
+   │  │ chrome.runtime.sendMessage
+   ▼  │
+[background.js — service worker]
+   1. POST getExpedientes  → Web App devuelve filas con col A vacia
+   2. por cada expediente (max 25, delay 7s):
+        pide token fresco al MAIN world
+        GET conexpbe /api/proceedings?number=<numero madre>&captcha=<token>
+        indexa la respuesta por nro_expediente y elige por coincidencia exacta
+        cachea la busqueda: el principal y sus incidentes salen de un solo token
+      ante 401/403/419/422 o 404-de-captcha → corta el lote (preserva el score)
+   3. POST saveProcids → el Web App escribe los procID en la columna A
    │
    ▼
-[Extension Chrome]
-  background.js intercepta request a
-  conexpbe.justucuman.gov.ar/api/proceedings
-  extrae el captcha del query param
-   │
-   │ 2. POST captcha + token
-   ▼
-[Web App doPost]
-  3. Lee Notificaciones, filas con col A vacía
-  4. Loop expedientes:
-     GET /api/proceedings?...&captcha=TOKEN
-     Parse procid del response
-     setValue(col A) inmediato (transaccional)
-  5. Si captcha expira (404/419) → corta loop
-   │
-   ▼
-[Notificaciones]
-  Col A poblada con procIDs
+[Notificaciones] col A poblada + notificacion de Chrome con el resumen
 ```
 
-Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Extraer última entrada**, el script lee col A (procIDs), llama el endpoint history, escribe la última entrada concatenada en col H.
+Despues, desde el menu **Notificaciones → 🔍 Extraer ultima entrada y asignar estados
+faltantes**, el script lee la columna A, llama al endpoint de historial (que no pide
+captcha) y completa historial, PDF y estado.
 
 ---
 
@@ -42,7 +49,7 @@ Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Ex
 ### 1. Apps Script — publicar Web App
 
 1. Abrir el proyecto Apps Script vinculado al Sheet
-2. Asegurarse de tener `SAE_Procid_WebApp.js` como archivo en el proyecto
+2. Asegurarse de tener `WebApp.gs` como archivo en el proyecto
 3. Editor → **Implementar → Nueva implementación**
 4. Tipo: **Aplicación web**
 5. Configuración:
@@ -64,10 +71,9 @@ Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Ex
 
 1. Click en el icono de la extension (puede estar en el menú de extensions)
 2. Pegar **Web App URL** (la del paso 1.7)
-3. Pegar **Token de seguridad** — exactamente igual al `SECURITY_TOKEN` que está en `SAE_Procid_WebApp.js`:
-   ```
-   ***TOKEN-ROTADO***
-   ```
+3. Pegar **Token de seguridad** — el que devuelve el menú
+   **Notificaciones → 🔑 Generar token de la Web App**. El token vive en
+   ScriptProperties (`PROCID_SECURITY_TOKEN`), nunca en el código.
 4. Click **💾 Guardar config**
 5. Verificar que el toggle **"Capturar captcha automáticamente"** esté activo
 
@@ -75,11 +81,12 @@ Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Ex
 
 1. Asegurarse que el Sheet tenga filas con expedientes en col D y col A vacía
 2. Ir a `https://consultaexpedientes.justucuman.gov.ar/`
-3. Buscar **cualquier expediente** (uno solo) y resolver el captcha
-4. La extension intercepta el captcha y dispara el Web App
-5. Ver la notificación de Chrome con el resultado (procesados / saltados / cortado)
+3. Buscar **cualquier expediente** (uno solo). Esa búsqueda hace que el sitio llame a
+   `grecaptcha.execute`, que es lo que la extension necesita para generar tokens propios
+4. El lote arranca solo: un token fresco por consulta, 7s entre consultas, máximo 25
+5. Ver la notificación de Chrome con el resultado (guardados / sin match / faltantes)
 6. Refrescar el Sheet — col A debería tener procIDs cargados
-7. Si quedaron expedientes sin procesar (captcha expiró), repetir desde el paso 2
+7. Si quedaron expedientes sin procesar, repetir desde el paso 2
 
 ### 5. Extraer última entrada
 
@@ -101,13 +108,21 @@ Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Ex
 
 ### Web App responde "token inválido"
 
-- El token en el popup de la extension debe ser **idéntico** al `SECURITY_TOKEN` en `SAE_Procid_WebApp.js`
+- El token en el popup de la extension debe ser **idéntico** al guardado en ScriptProperties (`PROCID_SECURITY_TOKEN`)
 - Si lo cambiaste en el script, hay que **reimplementar** el Web App (Implementar → Administrar implementaciones → editar versión)
 
-### Web App responde "captcha inválido/expirado"
+### El lote se corta con "faltan N expedientes"
 
-- El captcha tiene TTL ~2 min. Si tardó mucho en disparar, reintentar haciendo otra búsqueda
-- Si pasa siempre, puede ser que la API esté validando el token contra Google (en cuyo caso necesitamos otro approach)
+- Es el comportamiento esperado ante un rechazo de captcha: se corta para no seguir
+  quemando score. Lo ya resuelto quedó guardado en la columna A
+- Volver a buscar un expediente en el sitio: el lote retoma con los que faltan
+- Si pasa siempre en el primer item, revisar la consola del service worker: puede ser
+  que el sitio haya cambiado la forma de llamar a `grecaptcha.execute`
+
+### "execute aún no fue llamado por el sitio"
+
+- La extension necesita ver **una** llamada real a `grecaptcha.execute` antes de poder
+  generar tokens. Buscar un expediente a mano en el sitio y reintentar
 
 ### Sheet no se actualiza
 
@@ -117,7 +132,7 @@ Después, manualmente desde el menú **🔎 SAE Consulta Expedientes → 📋 Ex
 
 ### Cambiar token de seguridad
 
-1. Editar `SECURITY_TOKEN` en `SAE_Procid_WebApp.js`
+1. Menú **Notificaciones → 🔑 Generar token de la Web App**
 2. Reimplementar el Web App (nueva versión)
 3. Actualizar token en popup de la extension
 
@@ -133,16 +148,29 @@ sae-procid-extension/
   popup.js               — lógica del popup
   README.md              — este archivo
 
-../SAE_Procid_WebApp.js  — código Apps Script (copiar al proyecto)
-../SAE_Apremios_Script.js — script existente, ya actualizado para col A = procID
+../WebApp.gs  — código Apps Script (copiar al proyecto)
+../Codigo.gs — script existente, ya actualizado para col A = procID
 ```
 
 ---
 
 ## Notas técnicas
 
-- **Single token, multiple lookups:** confirmado por test, el captcha reCAPTCHA es reusable dentro de su TTL para distintos `number` params
-- **TTL configurable:** `CAPTCHA_TTL_MS` en `SAE_Procid_WebApp.js` (default 110s, deja margen sobre los ~120s reales)
-- **Rate limit:** servidor permite 1000 req/h por IP, sobra para 30 expedientes
-- **Lock:** `LockService` evita que dos POSTs simultáneos pisen filas
-- **Escritura inmediata:** cada procid encontrado se escribe + flush ANTES de la siguiente request, para no perder progreso si el script muere
+- **Token fresco por consulta:** la v1 interceptaba el token del request saliente y lo
+  reusaba dentro de su TTL (~110s). La v2 llama a `grecaptcha.execute` con los argumentos
+  capturados del propio sitio y obtiene uno nuevo por consulta: sin ventana de expiración
+- **MAIN vs ISOLATED:** `grecaptcha` vive en el contexto de la página, invisible para un
+  content script normal. De ahí `"world": "MAIN"` en el manifest y el puente por `CustomEvent`
+- **Re-inyección:** si se actualiza la extension con la pestaña abierta, el content script
+  queda huérfano (`Receiving end does not exist`). El background lo re-inyecta con
+  `chrome.scripting.executeScript` y reintenta. La inyección es idempotente
+  (`grecaptcha.__sae_hooked`)
+- **Dos MAIN worlds:** tras una re-inyección pueden convivir el closure viejo y el nuevo.
+  El listener de ISOLATED prefiere token sobre error y espera hasta el timeout de 10s
+- **Número madre:** se consulta siempre por `nnnn/aa` y se elige por coincidencia exacta
+  de `nro_expediente`, nunca `data[0]`. Un solo token resuelve el principal y sus incidentes
+- **Rate limit:** 7s entre consultas, tope de 25 por lote. El servidor tolera 1000 req/h
+  por IP; el límite real es el score de reCAPTCHA, no la API
+- **Lock:** `LockService` evita que dos POST simultáneos pisen filas
+- **Escritura inmediata:** cada procid se escribe + flush antes de la siguiente request,
+  para no perder progreso si el script muere

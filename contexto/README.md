@@ -2,7 +2,8 @@
 
 Planilla: **Gestor de notificaciones** (Google Sheets).
 Los scripts del repo (`Codigo.gs`, `WebApp.gs`) corren sobre esta planilla.
-Capturas tomadas el 29/08/2026.
+Capturas tomadas el 29/08/2026. Los nombres de los responsables estan anonimizados
+(`RESP. A` … `RESP. D`); el resto de los datos es real.
 
 Pestañas: `Notificaciones` · `Autoaprendizaje` · `Responsables`
 
