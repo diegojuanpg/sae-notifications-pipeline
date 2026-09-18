@@ -1,54 +1,79 @@
 # Gestor de Notificaciones Judiciales — Tucumán
 
-Automatización end‑to‑end que centraliza en una Google Sheet las notificaciones diarias
-del Poder Judicial de Tucumán: hace login en el portal, scrapea las notificaciones del día,
-resuelve el ID interno de cada expediente contra una API protegida por reCAPTCHA invisible,
-baja el historial y los PDF adjuntos, y autoasigna el estado procesal de cada causa.
+Un abogado con más de cien expedientes a cargo tardaba **cuatro horas por día** en
+revisar las novedades del Poder Judicial de Tucumán, porque la información de cada
+causa está dispersa en varias pantallas del portal oficial. Este sistema scrapea esa
+información, la deja ordenada —una fila por expediente, con todo junto— y deja al
+abogado únicamente la parte que exige criterio: leer y asignar el estado procesal.
+**Media hora por día.**
 
 Tres piezas: **Google Apps Script** (orquestador + scraper + Web App),
 **extensión de Chrome MV3** (puente de reCAPTCHA) y **Google Sheets** como interfaz de usuario.
 
-> **English summary** — End‑to‑end automation that centralizes the daily court notifications
-> of the Judiciary of Tucumán (Argentina) into a Google Sheet. It logs into the court portal,
-> scrapes the day's notifications, resolves each case's internal ID against a
-> reCAPTCHA-protected API, fetches case history and PDF attachments, and auto‑assigns the procedural
-> status of each case. Built with Google Apps Script, a Manifest V3 Chrome extension and
-> Google Sheets as the UI. The interesting part is the **reCAPTCHA bridge** (see
-> [Cómo se resuelve el reCAPTCHA](#cómo-se-resuelve-el-recaptcha)): no captcha is broken —
-> the extension re‑uses the site's own `grecaptcha` instance inside the user's authenticated
-> session to mint one fresh token per query.
+> **English summary** — A lawyer managing 100+ active cases spent **four hours a day**
+> reviewing daily court updates in Tucumán (Argentina), because each case's information
+> is scattered across several screens of the official portal. This system scrapes it,
+> lays it out as one row per case with everything in place, and leaves the lawyer only
+> the part that needs judgment: reading and assigning the procedural status. **Thirty
+> minutes a day.** It logs into the court portal, scrapes the day's notifications,
+> resolves each case's internal ID against a reCAPTCHA-protected API, fetches case
+> history and PDF attachments, and auto‑assigns statuses it has already learned.
+> Built with Google Apps Script, a Manifest V3 Chrome extension and Google Sheets as
+> the UI. The interesting part is the **reCAPTCHA bridge** (see
+> [Cómo se resuelve el reCAPTCHA](#cómo-se-resuelve-el-recaptcha)): no captcha is broken
+> and the user never solves one — the extension re‑uses the site's own `grecaptcha`
+> instance inside the user's authenticated session to mint one fresh token per query.
 
 ---
 
 ## El problema
 
-Un estudio jurídico que lleva juicios de apremio recibe todos los días una tanda de
-notificaciones judiciales en el portal del SAE (Sistema de Administración de Expedientes).
-El flujo manual era:
+Cada abogado del estudio tiene asignada una cartera de expedientes — más de cien — y
+todos los días algunos de ellos tienen novedades en el portal del SAE (Sistema de
+Administración de Expedientes). El trabajo real del abogado es **decidir el estado de
+cada expediente**: leer qué se notificó y asignar un estado (`4.VER QUE LIBRE
+MANDAMIENTO`, `9.EMBARGO`, `17.PLAZOS SUSPENDIDOS`…) que es lo que después define qué
+acción toma el estudio sobre esa causa.
 
-1. Entrar al portal, mirar la tanda del día (podían ser 10 o 60 notificaciones).
-2. Por cada expediente, abrir el buscador público de Consulta de Expedientes,
-   **resolver un captcha**, buscar el número de expediente y abrir la ficha.
-3. Leer la última entrada del historial para entender qué pasó.
-4. Descargar el PDF de la actuación.
-5. Anotar a mano en una planilla el estado procesal resultante y a qué abogado del
-   estudio le corresponde ese expediente.
+Para poder decidir hay que ponerse en contexto, y ahí está el cuello de botella: el
+portal no está hecho para revisar carteras grandes. La información de un expediente
+está repartida en varias pantallas —la notificación por un lado, el historial de
+actuaciones por otro, el texto de la actuación en un visor, el PDF adjunto en otra
+descarga— y cada una es un click más y una espera más.
 
-Entre una y dos horas por día, todos los días, con errores de transcripción y
-expedientes que se pasaban por alto.
+Con un expediente es trivial. Con más de cien es inviable: la parte que exige criterio
+profesional queda sepultada bajo navegación repetitiva.
+
+**Cuatro horas por día**, con errores de transcripción y expedientes que se pasaban
+por alto.
 
 ## El resultado
 
-Un solo Sheet donde cada mañana aparece la tanda del día ya cruzada, con:
+El sistema hace la recolección y deja al abogado solo la decisión. Cada mañana la
+planilla tiene **una fila por expediente con novedades**, y en esa fila está junto todo
+lo que antes exigía recorrer el portal:
+
+![Una fila por expediente](docs/fila-expediente.png)
+
+*Notificación y descripción, última entrada del historial, el texto de la actuación
+renderizado a PDF y el adjunto bajado a Drive — todo en la misma fila. Los nombres de
+los responsables están anonimizados (`RESP. A` … `RESP. D`); el resto de los datos es real.*
+
+El abogado baja fila por fila, lee, y elige el estado del desplegable en la columna E.
+Cuando termina, `transferirEstadosEspacioSat()` pasa esos estados a la planilla que usa
+todo el estudio, que es donde se coordina la acción sobre cada causa.
+
+**Media hora por día.** De cuatro horas a treinta minutos, y los treinta minutos que
+quedan son los que valen: leer y decidir.
 
 | Lo que antes era manual | Lo que hace el sistema |
 |---|---|
 | Login + navegar la tabla paginada | `hacerLogin()` + `etapaScrape()` |
-| Resolver captcha por cada expediente | Extensión Chrome: un token de reCAPTCHA por consulta, sin intervención |
+| Pasar el captcha del buscador, expediente por expediente | Extensión Chrome: un token por consulta, sin intervención del usuario |
 | Buscar el `procID` interno de cada causa | Web App + API `/api/proceedings` |
-| Leer la última entrada del historial | `obtenerHistorialYAdjuntoCercanoHoyPorProcID()` |
-| Bajar el PDF y guardarlo | `descargarPDFADrive()` + `obtenerTextoYGenerarPDF()` |
-| Decidir el estado procesal | `asignarEstadosFinal()` sobre la tabla de Autoaprendizaje |
+| Abrir el historial y leer la última entrada | `obtenerHistorialYAdjuntoCercanoHoyPorProcID()` |
+| Abrir el visor de texto y descargar el PDF | `obtenerTextoYGenerarPDF()` + `descargarPDFADrive()` |
+| Repetir el mismo estado para casos idénticos | `asignarEstadosFinal()` sobre la tabla de Autoaprendizaje |
 | Saber de quién es el expediente | `cargarResponsables()` con `IMPORTRANGE` a la planilla del estudio |
 | Pasar los estados al tablero del estudio | `transferirEstadosEspacioSat()` |
 
@@ -56,8 +81,8 @@ Corre solo a las 3:00 AM por un trigger diario. A las 9 de la mañana la planill
 
 ![Hoja Notificaciones](contexto/capturas/notificaciones.png)
 
-*Hoja `Notificaciones`. Los nombres de los responsables están anonimizados (`RESP. A` … `RESP. D`);
-el resto de los datos es real.*
+*La hoja completa. La cabecera lleva el timestamp de la última corrida y los contadores
+de la tanda; el segmentador de la fila 4 permite filtrar por responsable o por estado.*
 
 ---
 
@@ -192,12 +217,16 @@ escribe en la celda como `=HYPERLINK(...)`.
 
 ## Cómo se resuelve el reCAPTCHA
 
-> **Lo primero, porque importa:** acá no se rompe ningún captcha. No hay OCR, no hay
-> servicio de resolución, no hay granja de tokens ni evasión de detección. El usuario
-> está autenticado, hace **una** búsqueda real, y a partir de ahí la extensión le pide
-> a la propia instancia de `grecaptcha` de la página — en la sesión del usuario, en el
-> origen del sitio — un token nuevo por cada consulta que ese usuario ya tiene derecho
-> a hacer. Lo que se automatiza es la repetición, no la verificación.
+> **Lo primero, porque importa:** acá no se rompe ningún captcha, y **el usuario nunca
+> resuelve uno**. El captcha del buscador es *invisible*: no hay checkbox ni semáforos
+> que señalar, ni siquiera para una persona. El sitio pide un token en silencio cada vez
+> que alguien busca, y Google decide si confía o no.
+>
+> Lo que hace la extensión es pedirle ese mismo token a la propia instancia de
+> `grecaptcha` de la página, en la sesión del usuario y en el origen del sitio, una vez
+> por consulta. No hay OCR, no hay servicio de resolución, no hay granja de tokens ni
+> evasión de detección: se automatiza la repetición de una consulta que el usuario ya
+> tiene derecho a hacer, no la verificación.
 
 ### El problema concreto
 
@@ -484,6 +513,8 @@ con fallback al número madre para que los incidentes hereden el responsable del
    carpeta `sae-procid-extension-v2.0.0/`.
 2. Abrir el popup y pegar la URL `/exec` y el token del paso 5.
 3. Ir a `consultaexpedientes.justucuman.gov.ar`, buscar **un** expediente cualquiera.
+   No hay captcha que resolver: es invisible, y esa búsqueda es lo único que la
+   extensión necesita para poder generar tokens por su cuenta.
 4. A partir de ahí el lote corre solo; una notificación de Chrome informa el resultado.
 
 <img src="docs/popup-extension.png" alt="Popup de la extensión" width="392">
