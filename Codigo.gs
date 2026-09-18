@@ -14,7 +14,44 @@ const CONFIG = {
   CONTINUACION_DELAY_MS: 60 * 1000,
   CONTINUACION_HANDLER: 'continuarApremios',
   RESUME_KEY: 'RESUME_STATE',
+  // Responsable cuyas filas se procesan (historial, PDF, estados).
+  // Se configura desde el menú y vive en ScriptProperties, no en el código.
+  RESPONSABLE_PROP: 'RESPONSABLE_OBJETIVO',
+  RESPONSABLE_DEFAULT: 'RESPONSABLE DEMO',
 };
+
+/**
+ * Responsable objetivo, normalizado a mayúsculas.
+ * Se lee una vez por ejecución y se cachea en memoria: los loops recorren
+ * cientos de filas y PropertiesService es una llamada de servicio.
+ */
+let _responsableObjetivoCache = null;
+
+function getResponsableObjetivo() {
+  if (_responsableObjetivoCache !== null) return _responsableObjetivoCache;
+  const guardado = PropertiesService.getScriptProperties().getProperty(CONFIG.RESPONSABLE_PROP);
+  _responsableObjetivoCache = (guardado || CONFIG.RESPONSABLE_DEFAULT).toString().trim().toUpperCase();
+  return _responsableObjetivoCache;
+}
+
+function configurarResponsableObjetivo() {
+  const ui = SpreadsheetApp.getUi();
+  const actual = getResponsableObjetivo();
+  const res = ui.prompt(
+    '👤 Responsable objetivo',
+    'Nombre del responsable cuyas filas se procesan (actual: ' + actual + '):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  const nuevo = res.getResponseText().trim().toUpperCase();
+  if (!nuevo) {
+    ui.alert('⚠️ Nombre vacío, no se guardó nada.');
+    return;
+  }
+  PropertiesService.getScriptProperties().setProperty(CONFIG.RESPONSABLE_PROP, nuevo);
+  _responsableObjetivoCache = nuevo;
+  ui.alert('✅ Responsable objetivo: ' + nuevo);
+}
 
 function ejecucionManual() {
   clearResumeState();
@@ -227,6 +264,7 @@ function etapaHistorial(state, inicioTs, hoja) {
   }
 
   const datos = hoja.getRange(6, 1, lastRow - 5, 9).getValues();
+  const objetivo = getResponsableObjetivo();
   const filaInicial = state.historialFilaActual || 6;
   const cache = {};
   let procesados = 0;
@@ -244,7 +282,7 @@ function etapaHistorial(state, inicioTs, hoja) {
     }
 
     const responsable = datos[i][1] ? datos[i][1].toString().trim() : '';
-    if (responsable !== 'RESP. A') { saltados++; continue; }
+    if (responsable.toUpperCase() !== objetivo) { saltados++; continue; }
 
     const procID = datos[i][0] ? datos[i][0].toString().trim() : '';
     const histActual = datos[i][8] ? datos[i][8].toString().trim() : '';
@@ -295,6 +333,7 @@ function asignarEstadosFinal(hoja) {
   if (lastRow < 6) return;
 
   const datos = hoja.getRange(6, 1, lastRow - 5, 9).getValues();
+  const objetivo = getResponsableObjetivo();
   const mapaEstados = cargarSettingsEstados();
   let asignados = 0;
   let respetados = 0;
@@ -302,7 +341,7 @@ function asignarEstadosFinal(hoja) {
   for (let i = 0; i < datos.length; i++) {
     const filaSheet = 6 + i;
     const responsable = datos[i][1] ? datos[i][1].toString().trim() : '';
-    if (responsable !== 'RESP. A') continue;
+    if (responsable.toUpperCase() !== objetivo) continue;
     const estadoActual = datos[i][4] ? datos[i][4].toString().trim() : '';
     const tipoEscrito = datos[i][7] ? datos[i][7].toString().trim() : '';
     const historial = datos[i][8] ? datos[i][8].toString().trim() : '';
@@ -1225,6 +1264,7 @@ function extraerUltimaEntradaYAsignarEstados() {
   }
 
   const datos = hoja.getRange(6, 1, lastRow - 5, 9).getValues();
+  const objetivo = getResponsableObjetivo();
 
   let fechaMasRecienteStr = null;
   let fechaMasRecienteVal = 0;
@@ -1273,7 +1313,7 @@ function extraerUltimaEntradaYAsignarEstados() {
     if (fecha !== fechaMasReciente) continue;
 
     const responsable = datos[i][1] ? datos[i][1].toString().trim() : '';
-    if (responsable !== 'RESP. A') continue;
+    if (responsable.toUpperCase() !== objetivo) continue;
 
     const procID = datos[i][0] ? datos[i][0].toString().trim() : '';
     if (!procID) { sinProcID++; continue; }
@@ -1330,6 +1370,9 @@ function onOpen() {
     .addItem('📤 Transferir estados a "Espacio SAT"', 'transferirEstadosEspacioSat')
     .addSeparator()
     .addItem('🔑 Actualizar credenciales de Log In', 'guardarCredenciales')
+    .addItem('👤 Configurar responsable objetivo', 'configurarResponsableObjetivo')
+    .addItem('🌐 Ver URL de la Web App', 'mostrarUrlWebApp')
+    .addItem('🔑 Generar token de la Web App', 'generarTokenWebApp')
     .addItem('⏰ Programar extracción diaria a las 3AM', 'crearTriggerDiario')
     .addItem('🗑️ Eliminar programación diaria', 'eliminarTriggerDiario')
     .addSeparator()

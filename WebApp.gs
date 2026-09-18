@@ -1,26 +1,45 @@
 const PROCID_CONFIG = {
   VERSION: 4,
-  SECURITY_TOKEN: '***TOKEN-ROTADO***',
+  // El token compartido con la extensión NO vive en el código: se guarda en
+  // ScriptProperties con la clave PROCID_SECURITY_TOKEN. Ver mostrarUrlWebApp().
+  TOKEN_PROP: 'PROCID_SECURITY_TOKEN',
+  RESPONSABLE_PROP: 'RESPONSABLE_OBJETIVO',
+  RESPONSABLE_DEFAULT: 'RESPONSABLE DEMO',
   API_BASE: 'https://conexpbe.justucuman.gov.ar/api',
   JURISDICTION_ID: 18,
   ORIGIN: 'https://consultaexpedientes.justucuman.gov.ar',
   HOJA_NOMBRE: 'Notificaciones',
   COL_PROCID: 1,
   COL_EXPTE: 4,
-  COL_HISTORIAL: 8,
   FILA_INICIO: 6,
   TOTAL_COLS: 9,
-  REQUEST_DELAY_MS: 250,
-  CAPTCHA_TTL_MS: 110000,
 };
+
+/**
+ * Token compartido con la extensión. Vive en ScriptProperties, nunca en el código:
+ * la Web App se publica con acceso "cualquier usuario", así que este token es la
+ * única barrera entre internet y la planilla.
+ */
+function getSecurityToken() {
+  return PropertiesService.getScriptProperties().getProperty(PROCID_CONFIG.TOKEN_PROP) || '';
+}
+
+function getResponsableObjetivoWebApp() {
+  const guardado = PropertiesService.getScriptProperties().getProperty(PROCID_CONFIG.RESPONSABLE_PROP);
+  return (guardado || PROCID_CONFIG.RESPONSABLE_DEFAULT).toString().trim().toUpperCase();
+}
 
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
       return jsonResp({ success: false, error: 'sin payload' });
     }
+    const esperado = getSecurityToken();
+    if (!esperado) {
+      return jsonResp({ success: false, error: 'Web App sin token configurado (ScriptProperties.' + PROCID_CONFIG.TOKEN_PROP + ')' });
+    }
     const params = JSON.parse(e.postData.contents);
-    if (params.token !== PROCID_CONFIG.SECURITY_TOKEN) {
+    if (params.token !== esperado) {
       return jsonResp({ success: false, error: 'token inválido' });
     }
 
@@ -79,6 +98,7 @@ function obtenerExpedientesSinProcid() {
   const datos = hoja.getRange(PROCID_CONFIG.FILA_INICIO, 1, numFilas, PROCID_CONFIG.TOTAL_COLS).getValues();
 
   const pendientes = [];
+  const objetivo = getResponsableObjetivoWebApp();
   let yaTienen = 0;
 
   for (let i = 0; i < datos.length; i++) {
@@ -90,7 +110,7 @@ function obtenerExpedientesSinProcid() {
 
     const responsable = datos[i][1];
     const responsableStr = responsable ? responsable.toString().toUpperCase() : '';
-    if (!responsableStr.includes('RESP. A')) {
+    if (!responsableStr.includes(objetivo)) {
       continue;
     }
 
@@ -155,73 +175,6 @@ function guardarProcids(results) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Helpers historial
-// ─────────────────────────────────────────────────────────────
-
-function obtenerHistorialProcid(procid) {
-  const url = PROCID_CONFIG.API_BASE + '/proceedings/history'
-    + '?jurisdiction=' + PROCID_CONFIG.JURISDICTION_ID
-    + '&proceeding=' + encodeURIComponent(procid);
-
-  let resp;
-  try {
-    resp = UrlFetchApp.fetch(url, {
-      method: 'get',
-      headers: {
-        'Accept': 'application/json',
-        'Origin': PROCID_CONFIG.ORIGIN,
-        'Referer': PROCID_CONFIG.ORIGIN + '/',
-      },
-      muteHttpExceptions: true,
-    });
-  } catch (err) {
-    Logger.log('Fetch historial error procid ' + procid + ': ' + err.message);
-    return null;
-  }
-
-  if (resp.getResponseCode() !== 200) {
-    Logger.log('Historial status ' + resp.getResponseCode() + ' para procid ' + procid);
-    return null;
-  }
-
-  let json;
-  try {
-    json = JSON.parse(resp.getContentText());
-  } catch (e) {
-    return null;
-  }
-
-  if (!json.success || !json.data || !Array.isArray(json.data.stories) || json.data.stories.length === 0) {
-    return null;
-  }
-
-  const stories = json.data.stories.slice().sort(function (a, b) {
-    return (b.fech || '').toString().localeCompare((a.fech || '').toString());
-  });
-  const top = stories[0];
-  const fecha = (top.fecha || '').trim();
-  const dscr = (top.dscr || '').trim();
-  return fecha + '\n' + dscr;
-}
-
-function setRichTextHistorial(celda, texto) {
-  const idx = texto.indexOf('\n');
-  const linea1 = idx >= 0 ? texto.substring(0, idx) : texto;
-  const linea2 = idx >= 0 ? texto.substring(idx + 1) : '';
-
-  const boldStyle = SpreadsheetApp.newTextStyle().setBold(true).setFontSize(11).build();
-  const normalStyle = SpreadsheetApp.newTextStyle().setBold(false).setFontSize(10).build();
-
-  const rt = SpreadsheetApp.newRichTextValue().setText(texto);
-  rt.setTextStyle(0, linea1.length, boldStyle);
-  if (linea2) {
-    rt.setTextStyle(linea1.length + 1, texto.length, normalStyle);
-  }
-  celda.setRichTextValue(rt.build());
-}
-
-
 function mostrarUrlWebApp() {
   const ui = SpreadsheetApp.getUi();
   let url = '';
@@ -243,8 +196,32 @@ function mostrarUrlWebApp() {
     );
     return;
   }
+  const token = getSecurityToken();
   ui.alert(
     '🌐 Web App URL\n\n' + url + '\n\n' +
-    '🔑 Token (configurar en extension):\n' + PROCID_CONFIG.SECURITY_TOKEN
+    '🔑 Token (configurar en la extensión):\n' +
+    (token || '⚠️ sin configurar — usá "Generar token de la Web App"')
   );
+}
+
+/**
+ * Genera un token aleatorio, lo guarda en ScriptProperties y lo muestra una vez
+ * para pegarlo en el popup de la extensión. Rotar el token = volver a correr esto.
+ */
+function generarTokenWebApp() {
+  const ui = SpreadsheetApp.getUi();
+  const anterior = getSecurityToken();
+  if (anterior) {
+    const conf = ui.alert(
+      '🔑 Rotar token',
+      'Ya hay un token configurado. Si generás uno nuevo, la extensión dejará de ' +
+      'funcionar hasta que pegues el nuevo valor en su popup.\n\n¿Continuar?',
+      ui.ButtonSet.YES_NO
+    );
+    if (conf !== ui.Button.YES) return;
+  }
+  const bytes = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const token = 'sae_' + bytes.substring(0, 40);
+  PropertiesService.getScriptProperties().setProperty(PROCID_CONFIG.TOKEN_PROP, token);
+  ui.alert('🔑 Token nuevo (pegalo en la extensión):\n\n' + token);
 }
