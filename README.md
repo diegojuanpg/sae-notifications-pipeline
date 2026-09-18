@@ -354,6 +354,12 @@ Chrome dice cuántos se depositaron y cuántos faltan, y la próxima búsqueda d
 retoma exactamente donde quedó, porque el Web App solo devuelve las filas con la
 columna A vacía.
 
+<img src="docs/popup-extension.png" alt="Popup de la extensión" width="392">
+
+*El popup de la extensión: configuración y resultado del último lote. Cuando el lote se
+corta por un rechazo del captcha, informa cuántos expedientes quedaron pendientes para
+la próxima búsqueda.*
+
 ---
 
 ## La regla de negocio que rompía todo: los incidentes
@@ -486,44 +492,6 @@ El detalle columna por columna está en [`contexto/README.md`](contexto/README.m
 *Hoja `Responsables`: una columna por abogado, alimentada por `IMPORTRANGE` desde la
 planilla maestra del estudio. `cargarResponsables()` arma el mapa `expte → responsable`,
 con fallback al número madre para que los incidentes hereden el responsable del principal.*
-
----
-
-## Puesta en marcha
-
-### Apps Script
-
-1. Copiar `Codigo.gs` y `WebApp.gs` al proyecto Apps Script vinculado a la planilla.
-2. Recargar la planilla → aparece el menú **Notificaciones**.
-3. **🔑 Actualizar credenciales de Log In** → usuario (CUIL) y contraseña del portal.
-   Se guardan en `ScriptProperties`.
-4. **👤 Configurar responsable objetivo** → el nombre cuyas filas se procesan.
-5. **🔑 Generar token de la Web App** → genera y guarda el token compartido. Copiarlo.
-6. Editor → **Implementar → Nueva implementación** → Aplicación web,
-   *Ejecutar como: yo*, *Acceso: cualquier usuario*. Copiar la URL `/exec`.
-7. **⏰ Programar extracción diaria a las 3AM** para el trigger automático.
-
-> El acceso público del Web App es obligatorio: la extensión hace POST sin credenciales
-> de Google. El token compartido es la única barrera, por eso vive en `ScriptProperties`
-> y se rota desde el menú.
-
-### Extensión de Chrome
-
-1. `chrome://extensions` → Modo de desarrollador → **Cargar descomprimida** →
-   carpeta `sae-procid-extension-v2.0.0/`.
-2. Abrir el popup y pegar la URL `/exec` y el token del paso 5.
-3. Ir a `consultaexpedientes.justucuman.gov.ar`, buscar **un** expediente cualquiera.
-   No hay captcha que resolver: es invisible, y esa búsqueda es lo único que la
-   extensión necesita para poder generar tokens por su cuenta.
-4. A partir de ahí el lote corre solo; una notificación de Chrome informa el resultado.
-
-<img src="docs/popup-extension.png" alt="Popup de la extensión" width="392">
-
-*El popup: configuración y resultado del último lote. Cuando el lote se corta por un
-rechazo del captcha, informa cuántos expedientes quedaron pendientes para la próxima
-búsqueda.*
-
-Detalle e incidencias comunes en [`sae-procid-extension-v2.0.0/README.md`](sae-procid-extension-v2.0.0/README.md).
 
 ---
 
